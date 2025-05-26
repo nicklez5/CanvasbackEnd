@@ -32,7 +32,8 @@ class CustomAuthToken(ObtainAuthToken):
         serializer = self.serializer_class(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
-        token, created = Token.objects.get_or_create(user=user)
+        (token, created) = Token.objects.get_or_create(user=user)
+        
         return Response({
             'token': token.key,
             'user_id': user.pk,
@@ -51,8 +52,8 @@ class RegisterView(APIView):
             data['response'] = "successfully registered a new user."
             data['email'] = CustomUser.email
             data['username'] = CustomUser.username
-            token = Token.objects.get(user=CustomUser).key
-            data['token'] = token
+            (token,created) = Token.objects.get_or_create(user=CustomUser)
+            data['token'] = token.key
         else:
             data = reg_serializer.errors
         return Response(data)
@@ -115,7 +116,7 @@ class UpdatePassword(APIView):
 #     serializer_class = UserLoginSerializer
 #     permission_classes = [AllowAny]
 
-#     def post(self,request,*args, **kwargs):
+#     def post(self,requesernst,*args, **kwargs):
 #         serializer = self.serializer_class(data=request.data,context={'request':request})
 #         serializer.is_valid(raise_exception=True)
 #         user = serializer.validated_data['user']

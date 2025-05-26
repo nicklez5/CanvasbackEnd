@@ -45,20 +45,28 @@ class UserLoginSerializer(serializers.Serializer):
     email = serializers.CharField(max_length=255)
     password = serializers.CharField(max_length=128,write_only=True)
 
-    def validate(self,data):
-        email = data["email"]
-        password = data["password"]
-        if email and password:
-            user = authenticate(email=email,password=password)
-            if not user:
-                msg = _('Unable to log in with provided credentials.')
-                raise serializers.ValidationError(msg, code='authorization')
-        else:
-            msg = _('Must include username and password.')
-            raise serializers.ValidationError(msg, code='authorization')
-        
-        data['user'] = user
-        
+    def validate(self, data):
+        email = data.get("email")
+        password = data.get("password")
+
+        if not email or not password:
+            raise serializers.ValidationError(
+                _("Must include both email and password."), code="authorization"
+            )
+
+        user = authenticate(request=self.context.get('request'), email=email, password=password)
+
+        if not user:
+            raise serializers.ValidationError(
+                _("Unable to log in with provided credentials."), code="authorization"
+            )
+
+        if not user.is_active:
+            raise serializers.ValidationError(
+                _("User account is disabled."), code="authorization"
+            )
+
+        data["user"] = user
         return data
     
 

@@ -1,85 +1,62 @@
 from django.core.files.storage import FileSystemStorage
+import logging
 from django.shortcuts import render
 from .models import Lecture
 from django.http import Http404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from rest_framework.parsers import FileUploadParser, MultiPartParser, JSONParser
+from rest_framework.parsers import FileUploadParser, MultiPartParser, JSONParser,FormParser
 from rest_framework import serializers, status 
 from .serializers import SerializeLecture 
-class LectureList(APIView):
+from rest_framework.generics import UpdateAPIView,RetrieveAPIView,DestroyAPIView, CreateAPIView, ListAPIView
+
+logger = logging.getLogger(__name__)  
+class LectureList(ListAPIView):
+    queryset = Lecture.objects.all()
+    serializer_class = SerializeLecture
     permission_classes = [IsAuthenticated]
-    def get(self, request, format=None):
-        lectures = Lecture.objects.all()
-        serializer = SerializeLecture(lectures, many=True)
-        return Response(serializer.data)
 
-class LecturePost(APIView):
+class LecturePost(CreateAPIView):
+    queryset = Lecture.objects.all()
+    serializer_class = SerializeLecture
     permission_classes = [IsAdminUser]
-    parser_classes=[MultiPartParser]
-    def post(self, request, format=None):
-        data = request.data
-        
-        uploaded_file = request.FILES['file']
-        if(uploaded_file):
-            fs = FileSystemStorage()
-            fs.save(uploaded_file.name, uploaded_file)
-        lecture = Lecture.objects.create(name=data.get("name"), description=data.get("description"), file=uploaded_file)
-        serializer = SerializeLecture(lecture)
-        return Response(serializer.data)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    parser_classes = [MultiPartParser, FormParser]
 
-class LectureDetail(APIView):
-    permission_classes = [IsAuthenticated]
-    def get_object(self,pk):
-        try:
-            return Lecture.objects.get(pk=pk)
-        except Lecture.DoesNotExist:
-            raise Http404
-    
-    def get(self, request, pk , format = None):
-        lecture = self.get_object(pk)
-        serializer = SerializeLecture(lecture)
-        return Response(serializer.data)
-
-class LectureUpdate(APIView):
+class LectureDetail(RetrieveAPIView):
+    queryset = Lecture.objects.all()
+    serializer_class = SerializeLecture
     permission_classes = [IsAdminUser]
-    parser_classes= [MultiPartParser]
-    def get_object(self,pk):
-        try:
-            return Lecture.objects.get(pk=pk)
-        except Lecture.DoesNotExist:
-            raise Http404
-
-    def post(self,request,pk,format=None):
-        data = request.data
-        lecture = self.get_object(pk)
-        uploaded_file = request.FILES['file']
-        if(uploaded_file):
-            fs = FileSystemStorage()
-            fs.save(uploaded_file.name, uploaded_file)
-        lecture.description = data.get("description")
-        lecture.name = data.get("name")
-        lecture.file = uploaded_file
-        lecture.save()
-        serializer = SerializeLecture(lecture)
-        return Response(serializer.data)
-        
-class LectureDelete(APIView):
+    lookup_field = 'pk'
+class LectureUpdate(UpdateAPIView):
+    queryset = Lecture.objects.all()
+    serializer_class = SerializeLecture
     permission_classes = [IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser]
+    lookup_field = 'pk'
+  
+class LectureDelete(DestroyAPIView):
+    queryset = Lecture.objects.all()
+    serializer_class = SerializeLecture
+    permission_classes = [IsAdminUser]
+    lookup_field = 'pk'
 
-    def get_object(self,pk):
-        try:
-            return Lecture.objects.get(pk=pk)
-        except Lecture.DoesNotExist:
-            raise Http404
-            
-    def delete(self, request, pk, format=None):
-        lecture = self.get_object(pk)
-        lecture.delete()
-        return Response(status=status.HTTP_200_OK)
-
+    def delete(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.file and instance.file.name:
+            try:
+                instance.file.delete(save=False)
+                file_deleted = True
+            except Exception as e:
+                logger.error(f"Failed to delete file {instance.file.name}: {e}")
+                file_deleted = False
+                # Log error or handle it gracefully
+        else:
+            file_deleted = False
+        self.perform_destroy(instance)
+        if file_deleted:
+            return Response({"detail": "Lecture and file deleted successfully."}, status=status.HTTP_200_OK)
+        else:
+            return Response({"detail": "Lecture deleted, but file deletion failed."}, status=status.HTTP_200_OK)
 
 # Create your views here.

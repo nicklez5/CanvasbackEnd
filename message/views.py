@@ -1,73 +1,60 @@
 from django.shortcuts import render
 from .models import Message
+from threads.models import Thread
 from users.models import CustomUser
 from profiles.models import Profile 
 from django.http import Http404
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser,IsAuthenticatedOrReadOnly
 from rest_framework import serializers, status
+from threads.serializers import SerializeThread
 from .serializers import SerializeMessage
-class MessageList(APIView):
+from rest_framework.generics import UpdateAPIView,RetrieveAPIView,DestroyAPIView, CreateAPIView, ListAPIView
+class MessageList(ListAPIView):
+    queryset = Message.objects.all()
+    serializer_class = SerializeMessage
     permission_classes = [IsAuthenticated]
-    def get(self, reuqest, format=None):
-        messages = Message.objects.all()
-        serializer = SerializeMessage(messages,many=True)
-        return Response(serializer.data)
 
-class MessagePost(APIView):
+
+class MessageCreateView(CreateAPIView):
+    queryset = Message.objects.all()
+    serializer_class = SerializeMessage
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        message = serializer.save()
+
+        # Fetch the updated thread, without querying again if already loaded
+        thread = message.thread
+
+        # Optionally handle thread not found, although it should exist due to ForeignKey constraint
+        if not thread:
+            return Response({"detail": "Thread not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Serialize the updated thread data
+        thread_data = SerializeThread(thread).data
+        return Response(thread_data, status=status.HTTP_201_CREATED)
+
+class MessageDetailView(RetrieveAPIView):
+    queryset = Message.objects.all()
+    serializer_class = SerializeMessage
     permission_classes = [IsAuthenticated]
-    def post(self, request, format=None):
-        serializer = SerializeMessage(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    lookup_field = 'pk'
 
-
-class MessageDetail(APIView):
+class MessageUpdateView(UpdateAPIView):
+    queryset = Message.objects.all()
+    serializer_class = SerializeMessage
     permission_classes = [IsAuthenticated]
-    def get_object(self,pk):
-        try:
-            return Message.objects.get(pk=pk)
-        except Message.DoesNotExist:
-            raise Http404
-    
-    def get(self, request, pk , format=None):
-        message = self.get_object(pk)
-        serializer = SerializeMessage(message)
-        return Response(serializer.data)
+    lookup_field = 'pk'
 
-class MessageUpdate(APIView):
-    permission_classes = [IsAdminUser]
-
-    def get_object(self,pk):
-        try:
-            return Message.objects.get(pk=pk)
-        except Message.DoesNotExist:
-            raise Http404
-    
-    def put(self, request, pk, format=None):
-        message = self.get_object(pk)
-        serializer = SerializeMessage(message,data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class MessageDelete(APIView):
-    permission_classes = [IsAdminUser]
-
-    def get_object(self,pk):
-        try:
-            return Message.objects.get(pk=pk)
-        except Message.DoesNotExist:
-            raise Http404
-    
-    def delete(self, request, pk ,format=None):
-        message = self.get_object(pk)
-        message.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+class MessageDeleteView(DestroyAPIView):
+    queryset = Message.objects.all()
+    serializer_class = SerializeMessage
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'pk'
 
 
     

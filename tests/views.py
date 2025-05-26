@@ -3,7 +3,7 @@ from django.core.files.storage import FileSystemStorage
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import IsAuthenticated,IsAdminUser
-from rest_framework.parsers import FileUploadParser, MultiPartParser
+from rest_framework.parsers import FormParser, MultiPartParser
 from .models import Tests
 from .serializers import SerializeTest
 from django.http import Http404
@@ -11,88 +11,59 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import serializers, status
 from .forms import TestForm
+from rest_framework.generics import UpdateAPIView,RetrieveAPIView,DestroyAPIView, CreateAPIView, ListAPIView
 
-@api_view(['GET',])
-@permission_classes((IsAuthenticated,))
-def api_test_list(request):
-    if request.method == 'GET':
-        tests = Tests.objects.all()
-        serializers = SerializeTest(tests,many=True)
-        return Response(serializers.data)
+class TestListView(ListAPIView):
+    queryset = Tests.objects.all()
+    serializer_class = SerializeTest
+    permission_classes = [IsAuthenticated]
     
-@api_view(['POST'])
-@permission_classes((IsAuthenticated,))
-def api_create_test(request):
-    if request.method == "POST":
-        data = request.POST 
+class TestPostView(CreateAPIView):
+    queryset = Tests.objects.all()
+    serializer_class = SerializeTest
+    permission_classes = [IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser]
 
-        uploaded_file = request.FILES['file']
-        if(uploaded_file):
-            fs = FileSystemStorage()
-            fs.save(uploaded_file.name,uploaded_file)
-        file = uploaded_file
-        description = data.get("description")
-        date_due = data.get("date_due")
-        name = data.get("name")
-        submitter = data.get("submitter")
-        max_points = data.get("max_points")
-        student_points = data.get("student_points")
-        tests = Tests.objects.create(description= description, date_due = date_due, name = name, submitter= submitter, max_points = max_points,student_points = student_points, file = file)
-        serializer = SerializeTest(tests)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(['GET',])
-@permission_classes((IsAuthenticated,))
-def api_detail_test_view(request,pk):
-    try:
-        Test_post = Tests.objects.get(pk=pk)
-    except Tests.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-    if request.method == "GET":
-        serializer = SerializeTest(Test_post)
-        return Response(serializer.data)
+class TestDetailView(RetrieveAPIView):
+    queryset = Tests.objects.all()
+    serializer_class = SerializeTest
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'pk'
 
-@api_view(['POST',])
-@permission_classes((IsAuthenticated,))
-def api_update_test_view(request,pk):
-    try:
-        test_post = Tests.objects.get(pk=pk)
-    except Tests.DoesNotExist:
-        raise Response(status=status.HTTP_404_NOT_FOUND)
-    
-    if request.method == 'POST':
-        data = request.POST 
-        uploaded_file = request.FILES['file']
-        test_post.description = data.get("description")
-        test_post.date_due = data.get("date_due")
-        test_post.name = data.get("name")
-        test_post.submitter = data.get("submitter")
-        test_post.max_points = data.get("max_points")
-        test_post.student_points = data.get("student_points")
-        if(uploaded_file):
-            fs = FileSystemStorage()
-            fs.save(uploaded_file.name,uploaded_file)
-            test_post.file = uploaded_file
-        test_post.save()
-        serializer = SerializeTest(test_post)
-        return Response(serializer.data)
-        return Response(status.HTTP_400_BAD_REQUEST)
+class TestUpdateView(UpdateAPIView):
+    queryset = Tests.objects.all()
+    serializer_class = SerializeTest
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+    lookup_field = 'pk'
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()  # Get the instance to update
+        serializer = self.get_serializer(instance, data=request.data, partial=True)  # Allow partial updates
+        serializer.is_valid(raise_exception=True)  # Validate incoming data
 
-@api_view(['DELETE',])
-@permission_classes([IsAdminUser,])
-def api_delete_test(request,pk):
-    try:
-        test_post = Tests.objects.get(pk=pk)
-    except Tests.DoesNotExist:
-        raise Response(status=status.HTTP_400_BAD_REQUEST)
-    
-    if request.method == "DELETE":
-        operation = test_post.delete()
-        data = {}
-        if operation:
-            data['response'] = 'Delete success'
-        return Response(data=data)
-# Create your views here.
+        # Perform additional logic before saving if needed
+        # e.g., check if file is uploaded and handle it
+
+        self.perform_update(serializer)  # Save the object
+
+        return Response(serializer.data)  # R
+
+class TestDeleteView(DestroyAPIView):
+    queryset = Tests.objects.all()
+    serializer_class = SerializeTest
+    permission_classes = [IsAdminUser]
+    lookup_field = 'pk'
+
+    def perform_destroy(self, instance):
+        # If you want to delete the file manually
+        if instance.file:
+            instance.file.delete(save=False)
+        if instance.student_file:
+            instance.student_file.delete(save=False) # Deletes the file from storage
+        instance.delete()
+    def delete(self, request, *args, **kwargs):
+        response = super().delete(request, *args, **kwargs)
+        # You can customize the response here, for example:
+        return Response({"message": "Resource deleted successfully."}, status=200)
+# Create your views here.a

@@ -38,15 +38,15 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.sites',
+    'users',
+    'course',
+    'lectures',
     'rest_framework',
     'rest_framework.authtoken',
-    'users',
     'profiles',
     'message',
     'threads',
-    'course',
     'assignments',
-    'lectures',
     'mycanvas',
     'corsheaders',
     'tests'
@@ -173,20 +173,20 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.CustomUser'
 REST_FRAMEWORK = {
-    
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10, 
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework.authentication.TokenAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
-        'rest_framework.permissions.IsAdminUser',
-        'rest_framework.permissions.AllowAny'
     ),
     'DEFAULT_PARSER_CLASSES': [
             'rest_framework.parsers.JSONParser',
             'rest_framework.parsers.FormParser',
             'rest_framework.parsers.MultiPartParser'
     ]
+    
 }
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR,'media')

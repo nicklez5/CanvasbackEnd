@@ -12,7 +12,8 @@ class Assignment(models.Model):
     max_points = models.IntegerField(null=True,blank=True)
     student_points = models.IntegerField(null=True,blank=True)
     description = models.TextField(max_length=100,blank=True)
-    file = models.FileField(storage=select_storage,null=True,blank=True)
+    assignment_file = models.FileField(storage=select_storage,null=True,blank=True)
+    student_file = models.FileField(storage=select_storage, null=True, blank=True)
     def __str__(self):
         return self.name 
 

@@ -8,7 +8,8 @@ class Tests(models.Model):
     date_due = models.DateTimeField(null=True,blank=True)
     name= models.CharField(max_length=100)
     submitter = models.CharField(max_length=100)
-    file=models.FileField(storage=select_storage,null=True)
+    file=models.FileField(storage=select_storage,null=True,blank=True)
+    student_file = models.FileField(storage=select_storage, null=True, blank=True)
     max_points= models.IntegerField(null=True,blank=True)
     student_points = models.IntegerField(null=True,blank=True)
 
@@ -18,4 +19,6 @@ class Tests(models.Model):
     class Meta:
         ordering=['date_due']
         db_table = "tests"
-# Create your models here.
+
+
+    

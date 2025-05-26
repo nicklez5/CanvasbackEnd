@@ -39,14 +39,6 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         return True 
     
     
-    @property
-    def profile(self):
-
-        return Profile.objects.get_or_create(user=self)
-    
-    @property
-    def canvas(self):
-        return Canvas.objects.get_or_create(user=self)
 
 
     
