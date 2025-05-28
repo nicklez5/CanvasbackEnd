@@ -1,7 +1,9 @@
 from django.db import models
-
+from django.conf import settings 
 class Thread(models.Model):
-    last_author = models.CharField(max_length=100,unique=False)
-    last_description = models.TextField(max_length=200)
-    last_timestamp = models.DateTimeField(auto_now_add=True,null=True,blank=True)
+    title = models.CharField(max_length=200,blank=False)
+    list_of_messages = models.ManyToManyField('message.Message',related_name='threads', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    def __str__(self):
+        return self.title
 # Create your models here.

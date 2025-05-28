@@ -6,7 +6,7 @@ def select_storage():
 class Lecture(models.Model):
     description = models.TextField(blank=True)
     name = models.CharField(max_length=100,unique=True)
-    file = models.FileField(storage=select_storage,null=True)
+    file = models.FileField(storage=select_storage,upload_to="lectures/",null=True)
     
 
     def __str__(self):

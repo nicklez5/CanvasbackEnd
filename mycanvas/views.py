@@ -15,7 +15,6 @@ from django.shortcuts import get_object_or_404
 
     
 class CanvasView(RetrieveAPIView):
-    queryset = Canvas.objects.all()
     serializer_class = SerializeCanvas
     permission_classes = [IsAuthenticated]
     lookup_field = 'pk'
@@ -30,13 +29,13 @@ class CanvasView(RetrieveAPIView):
 
 class CanvasCourse(APIView):
     serializer_class = SerializeCanvas
-    permission_classes = [IsAdminUser]
-
+    permission_classes = [IsAuthenticated]
+    
     def get_object(self, pk):
         """Helper method to retrieve the Canvas object or raise a 404 error"""
         return get_object_or_404(Canvas, pk=pk)
 
-    def patch(self, request, pk, format=None):
+    def delete(self, request, pk, format=None):
         """Remove a course from the Canvas' list_courses (ManyToManyField)"""
         data = request.data
         canvas = self.get_object(pk)
@@ -45,7 +44,8 @@ class CanvasCourse(APIView):
         if not course_ID:
             return Response({"detail": "Course ID is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        course = get_object_or_404(Course, pk=course_ID)  # Get course, raises 404 if not found
+        course = get_object_or_404(Course, pk=course_ID)
+         # Get course, raises 404 if not found
         canvas.list_courses.remove(course)
         canvas.save()
 

@@ -7,7 +7,8 @@ urlpatterns = [
     path('post/',views.TestPostView.as_view(), name="create"),
     path('detail/<str:pk>/',views.TestDetailView.as_view(), name="detail"),
     path('update/<str:pk>/', views.TestUpdateView.as_view(), name="update"),
-    path('delete/<str:pk>/', views.TestDeleteView.as_view(), name="delete")
+    path('delete/<str:pk>/', views.TestDeleteView.as_view(), name="delete"),
+    path('submit/<str:test_id>/',views.TestSubmitView.as_view(),name="submit")
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)

@@ -1,14 +1,12 @@
-from django.shortcuts import get_object_or_404, render
-from django.conf import settings
-from rest_framework.decorators import action, permission_classes 
-from .models import Course
-from django.http import Http404
-from rest_framework.views import APIView
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
-from rest_framework import serializers, status, viewsets 
-from rest_framework.decorators import api_view, parser_classes, permission_classes
-from .serializers import SerializeCourse,SerializeAssignment, SerializeLecture
+from rest_framework.permissions import IsAdminUser, AllowAny, IsAuthenticated
+from rest_framework.views import APIView
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework import status
+from .models import Course
+from .serializers import SerializeCourse, SerializeLecture, SerializeAssignment, SerializeProfile,SerializeTest,SerializeThread
+from django.shortcuts import get_object_or_404
 from lectures.models import Lecture 
 from assignments.models import Assignment
 from profiles.models import Profile 
@@ -17,279 +15,373 @@ from users.models import CustomUser
 from mycanvas.models import Canvas
 from threads.models import Thread 
 from django.core.files.storage import FileSystemStorage
-from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
-from datetime import datetime
-from django.core.exceptions import ObjectDoesNotExist
-from django.shortcuts import get_object_or_404
-from .signals import update_canvas_for_course
-import json
-import django.dispatch 
-from rest_framework.generics import UpdateAPIView,RetrieveAPIView,DestroyAPIView, CreateAPIView, ListAPIView,RetrieveUpdateAPIView
-class CourseListView(ListAPIView):
-    queryset = Course.objects.all()
-    permission_classes = [IsAuthenticated]
-    def get(self, request):
-        # Using prefetch_related for efficient querying
-        courses = Course.objects.prefetch_related(
-            'lectures', 
-            'profiles', 
-            'assignments', 
-            'tests', 
-            'threads'
-        )
+
+class CourseListView(APIView):
+    permission_classes = [AllowAny]
+    def get(self,request,format=None):
+        """Get all courses"""
+        courses = Course.objects.all()
         serializer = SerializeCourse(courses, many=True)
         return Response(serializer.data)
-class CoursePostView(CreateAPIView):
-    queryset = Course.objects.all()
-    serializer_class = SerializeCourse
-    permission_classes = [IsAdminUser]
 
-class CourseDetailView(RetrieveAPIView):
-    queryset = Course.objects.all()
-    serializer_class = SerializeCourse
-    permission_classes = [IsAuthenticated]
-class CourseUpdateView(UpdateAPIView):
-    queryset = Course.objects.all()  # Default queryset for retrieving all courses
-    serializer_class = SerializeCourse
-    permission_classes = [IsAdminUser]
 
-    def get_queryset(self):
-        # Use prefetch_related to efficiently fetch related data
-        return Course.objects.prefetch_related(
-            'lectures', 'profiles', 'assignments', 'tests', 'threads'
-        )
+class CoursePostView(APIView):
+    permission_classes = [IsAdminUser]  # Optional: Only allow admins to create courses
 
-    def update(self, request, *args, **kwargs):
-        # Fetch the course object using the custom queryset (including prefetching related data)
-        course = self.get_object()
+    def post(self, request, format=None):
+        """
+        Create a new course.
+        """
         data = request.data
         
-        # Update basic fields
-        course.name = data.get('name', course.name)
+        # Ensure that the name of the course is provided
+        course_name = data.get("name")
+        if not course_name:
+            return Response({"detail": "Course name is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Update many-to-many relationships
-        for field_name in ['lectures', 'assignments', 'profiles', 'tests', 'threads']:
-            related_field_data = data.get(field_name, [])
-            related_objects = globals()[field_name.capitalize()].objects.filter(id__in=related_field_data)
-            getattr(course, field_name).set(related_objects)
+        # Create the course using the provided data
+        course = Course.objects.create(name=course_name)
+        
+        # Optionally: If there are other fields like lectures, assignments, etc. you could add them here
 
-        course.save()
+        # Serialize the created course and return it in the response
+        serializer = SerializeCourse(course)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-        # Return the updated course data using the serializer
-        serializer = self.get_serializer(course)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-class CourseUpdateLecturesAPIView(APIView):
-    permission_classes = [IsAdminUser]  # Only admin users can modify the lectures for the course
-    
-    def get_object(self, pk):
-        try:
-            return Course.objects.prefetch_related('lectures').get(pk=pk)
-        except Course.DoesNotExist:
-            return Response({"detail": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
-    
-    def patch(self, request, pk, format=None):
+
+class CourseDetailView(APIView):
+    permission_classes = [AllowAny]
+    def get(self,request,pk,format=None):
+
+        """Get details of a specific course"""
+        course = get_object_or_404(Course, pk=pk)
+        if request.method == "GET":
+            serializer = SerializeCourse(course)
+            return Response(serializer.data)
+
+
+class CourseDeleteView(APIView):
+    permission_classes = [IsAdminUser]  # Only admin users can delete courses
+
+    def delete(self, request, pk, format=None):
         """
-        Update the lectures of a specific course by adding or removing lectures.
+        Delete a specific course by its pk (primary key).
         """
-        course = self.get_object(pk)  # Get the Course object
+        # Retrieve the course using the provided primary key (pk)
+        course = get_object_or_404(Course, pk=pk)
         
-        if isinstance(course, Response):  # If the course doesn't exist, return the error response
-            return course
+        # Delete the course from the database
+        course.delete()
         
-        # Data passed in the request for adding and removing lectures
-        add_lectures = request.data.get('add_lectures', [])
-        remove_lectures = request.data.get('remove_lectures', [])
-        
-        # Add new lectures to the course
-        if add_lectures:
-            lectures_to_add = Lecture.objects.filter(id__in=add_lectures)
-            course.lectures.add(*lectures_to_add)
-        
-        # Remove lectures from the course
-        if remove_lectures:
-            lectures_to_remove = Lecture.objects.filter(id__in=remove_lectures)
-            course.lectures.remove(*lectures_to_remove)
-        
-        # Save the course after making changes
-        course.save()
-        
-        # Return the updated course data
-        serializer = SerializeCourse(course)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-class CourseUpdateProfilesAPIView(APIView):
-    permission_classes = [IsAdminUser]  # Only admin users can modify the lectures for the course
-    
-    def get_object(self, pk):
-        try:
-            return Course.objects.prefetch_related('profiles').get(pk=pk)
-        except Course.DoesNotExist:
-            return Response({"detail": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
-    
-    def patch(self, request, pk, format=None):
-        """
-        Update the profiles of a specific course by adding or removing profiles.
-        """
-        course = self.get_object(pk)  # Get the Course object
-        
-        if isinstance(course, Response):  # If the course doesn't exist, return the error response
-            return course
-        
-        # Data passed in the request for adding and removing profiles
-        add_profiles = request.data.get('add_profiles', [])
-        remove_profiles = request.data.get('remove_profiles', [])
-        
-        # Add new profiles to the course
-        if add_profiles:
-            profiles_to_add = Profile.objects.filter(id__in=add_profiles)
-            course.profiles.add(*profiles_to_add)
-        
-        # Remove profiles from the course
-        if remove_profiles:
-            profiles_to_remove = Profile.objects.filter(id__in=remove_profiles)
-            course.profiles.remove(*profiles_to_remove)
-        
-        # Save the course after making changes
-        course.save()
-        
-        # Return the updated course data
-        serializer = SerializeCourse(course)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-class CourseUpdateAssignmentsAPIView(APIView):
-    permission_classes = [IsAdminUser]  # Only admin users can modify the lectures for the course
-    
-    def get_object(self, pk):
-        try:
-            return Course.objects.prefetch_related('assignments').get(pk=pk)
-        except Course.DoesNotExist:
-            return Response({"detail": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
-    
-    def patch(self, request, pk, format=None):
-        """
-        Update the assignments of a specific course by adding or removing assignments.
-        """
-        course = self.get_object(pk)  # Get the Course object
-        
-        if isinstance(course, Response):  # If the course doesn't exist, return the error response
-            return course
-        
-        # Data passed in the request for adding and removing assignments
-        add_assignments = request.data.get('add_assignments', [])
-        remove_assignments = request.data.get('remove_assignments', [])
-        
-        # Add new assignments to the course
-        if add_assignments:
-            assignments_to_add = Assignment.objects.filter(id__in=add_assignments)
-            course.assignments.add(*assignments_to_add)
-        
-        # Remove assignments from the course
-        if remove_assignments:
-            assignments_to_remove = Assignment.objects.filter(id__in=remove_assignments)
-            course.assignments.remove(*assignments_to_remove)
-        
-        # Save the course after making changes
-        course.save()
-        
-        # Return the updated course data
-        serializer = SerializeCourse(course)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-class CourseUpdateTestsAPIView(APIView):
-    permission_classes = [IsAdminUser]  # Only admin users can modify the lectures for the course
-    
-    def get_object(self, pk):
-        try:
-            return Course.objects.prefetch_related('tests').get(pk=pk)
-        except Course.DoesNotExist:
-            return Response({"detail": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
-    
-    def patch(self, request, pk, format=None):
-        """
-        Update the tests of a specific course by adding or removing tests.
-        """
-        course = self.get_object(pk)  # Get the Course object
-        
-        if isinstance(course, Response):  # If the course doesn't exist, return the error response
-            return course
-        
-        # Data passed in the request for adding and removing tests
-        add_tests = request.data.get('add_tests', [])
-        remove_tests = request.data.get('remove_tests', [])
-        
-        # Add new tests to the course
-        if add_tests:
-            tests_to_add = Tests.objects.filter(id__in=add_tests)
-            course.tests.add(*tests_to_add)
-        
-        # Remove tests from the course
-        if remove_tests:
-            tests_to_remove = Tests.objects.filter(id__in=remove_tests)
-            course.tests.remove(*tests_to_remove)
-        
-        # Save the course after making changes
-        course.save()
-        
-        # Return the updated course data
-        serializer = SerializeCourse(course)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-class CourseUpdateThreadsAPIView(APIView):
-    permission_classes = [IsAdminUser]  # Only admin users can modify the lectures for the course
-    
-    def get_object(self, pk):
-        try:
-            return Course.objects.prefetch_related('threads').get(pk=pk)
-        except Course.DoesNotExist:
-            return Response({"detail": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
-    
-    def patch(self, request, pk, format=None):
-        """
-        Update the threads of a specific course by adding or removing threads.
-        """
-        course = self.get_object(pk)  # Get the Course object
-        
-        if isinstance(course, Response):  # If the course doesn't exist, return the error response
-            return course
-        
-        # Data passed in the request for adding and removing threads
-        add_threads = request.data.get('add_threads', [])
-        remove_threads = request.data.get('remove_threads', [])
-        
-        # Add new threads to the course
-        if add_threads:
-            threads_to_add = Thread.objects.filter(id__in=add_threads)
-            course.threads.add(*threads_to_add)
-        
-        # Remove threads from the course
-        if remove_threads:
-            threads_to_remove = Thread.objects.filter(id__in=remove_threads)
-            course.threads.remove(*threads_to_remove)
-        
-        # Save the course after making changes
-        course.save()
-        
-        # Return the updated course data
-        serializer = SerializeCourse(course)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-class CourseDeleteView(DestroyAPIView):
-    queryset = Course.objects.all()
-    serializer_class = SerializeCourse
+        # Return a success response
+        return Response({"detail": "Course deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+class CourseUpdateView(APIView):
     permission_classes = [IsAdminUser]
-    def destroy(self, request, *args, **kwargs):
-        # You can add custom logic before deleting, like logging
-        instance = self.get_object()  # Get the object to be deleted
-        self.perform_destroy(instance)  # Perform the deletion
+    def put(self, request, pk, format=None):
+        """
+        Update the name of a course by its pk (primary key).
+        """
+        # Retrieve the course using the provided primary key (pk)
+        course = get_object_or_404(Course, pk=pk)
+
+        # Get the data from the request
+        data = request.data
+        new_name = data.get("name")
+
+        # Ensure that the name field is provided in the request
+        if not new_name:
+            return Response({"detail": "Course name is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update the course name
+        course.name = new_name
+        course.save()
+
+        # Serialize the updated course and return the response
+        serializer = SerializeCourse(course)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class CourseLecturesView(APIView):
+    def get_permissions(self):
+        """
+        Set different permissions for different HTTP methods.
+        """
+        if self.request.method == 'GET':
+            return [IsAuthenticated()]  # Allow authenticated users for PUT requests
+        return [IsAdminUser()]
+    def get(self, request, pk, format=None):
+        """Get the details of a specific course."""
+        course = get_object_or_404(Course, pk=pk)
+        lectures = course.lectures.all()
+        serializer = SerializeLecture(lectures, many=True)
+        return Response(serializer.data)
+    def post(self,request,pk,format=None):
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        lecture_id = data.get("id")
+        lecture = get_object_or_404(Lecture, pk=lecture_id)
+        course.lectures.add(lecture)
+        course.save()
+        serializer = SerializeCourse(course)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+    def delete(self,request,pk,format=None):
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        lecture_id = data.get("id")
+        lecture = get_object_or_404(Lecture, pk=lecture_id)
+        course.lectures.remove(lecture)
+        course.save()
+        serializer = SerializeCourse(course)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+    def put(self, request, pk, format=None):
+        # Fetch the course by its primary key (pk)
+        course = get_object_or_404(Course, pk=pk)
         
-        # Return a custom response
-        return Response({"message": "Course deleted successfully."}, status=200)
+        # Extract data from the request
+        data = request.data
+        lecture_id = data.get("id")
+        if not lecture_id:
+            return Response({"detail": "Lecture ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+        file = request.FILES.get("file")
 
-    
+        # Fetch the lecture by its ID
+        lecture = get_object_or_404(Lecture, pk=lecture_id)
 
-
-
-
-    
+        # Only update the fields that are provided in the request data
+        if 'name' in data:
+            lecture.name = data.get("name", lecture.name)
+        if 'description' in data:
+            lecture.description = data.get("description", lecture.description)
         
-
+        # Handle file upload if provided
+        if file:
+            fs = FileSystemStorage()
+            filename = fs.save(file.name, file)
+            lecture.file = fs.url(filename)  # Update file URL in the lecture model
         
-e
-    
+        # Save the updated lecture
+        lecture.save()
 
-# Create your views here.
+        # Return the updated course with the modified lecture
+        serializer = SerializeCourse(course)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
+class CourseAssignmentsView(APIView):
+    def get_permissions(self):
+        """
+        Set different permissions for different HTTP methods.
+        """
+        if self.request.method == 'GET':
+            return [IsAuthenticated()]  # Allow authenticated users for PUT requests
+        return [IsAdminUser()]
+    def get(self, request, pk, format=None):
+        """Get the details of a specific course."""
+        course = get_object_or_404(Course, pk=pk)
+        assignments = course.assignments.all()
+        serializer = SerializeAssignment(assignments, many=True)
+        return Response(serializer.data)
+    def post(self,request,pk,format=None):
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        assignment_id = data.get("id")
+        assignment = get_object_or_404(Assignment, pk=assignment_id)
+        course.assignments.add(assignment)
+        course.save()
+        serializer = SerializeCourse(course)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+    def patch(self,request,pk,format=None):
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        assignment_id = data.get("id")
+        assignment = get_object_or_404(Assignment, pk=assignment_id)
+        course.assignments.remove(assignment)
+        course.save()
+        serializer = SerializeCourse(course)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+    def put(self, request, pk, format=None):
+        """
+        Update the assignments for a specific course.
+        """
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        assignment_id = data.get("id")
+
+        if not assignment_id:
+            return Response({"detail": "Assignment ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Fetch the assignment object by ID
+        assignment = get_object_or_404(Assignment, pk=assignment_id)
+
+        # If the assignment is to be updated, modify its fields here
+        assignment.name = data.get("name", assignment.name)
+        assignment.description = data.get("description", assignment.description)
+        assignment.date_due = data.get("date_due", assignment.date_due)
+        assignment.max_points = data.get("max_points", assignment.max_points)
+        assignment.student_points = data.get("student_points", assignment.student_points)
+        
+        # Optionally update the file if it has been provided
+        file = request.FILES.get("assignment_file")
+        if file:
+            fs = FileSystemStorage()
+            filename = fs.save(file.name, file)
+            file_url = fs.url(filename)
+            assignment.assignment_file = file_url  # Update assignment file URL
+
+        # Save the updated assignment
+        assignment.save()
+
+        # If you want to add or remove assignments from the course, 
+        # you can modify the `assignments` field of the course here.
+        # If you want to re-link the updated assignment to the course, do this:
+        if assignment not in course.assignments.all():
+            course.assignments.add(assignment)  # Add assignment to course if not already there
+
+        course.save()
+
+        # Serialize the updated course data and return the response
+        serializer = SerializeAssignment(assignment)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class CourseTestsView(APIView):
+    def get_permissions(self):
+        """
+        Set different permissions for different HTTP methods.
+        """
+        if self.request.method == 'PUT' or self.request.method == 'GET':
+            return [IsAuthenticated()]  # Allow authenticated users for PUT requests
+        return [IsAdminUser()]
+    def get(self, request, pk, format=None):
+        """Get the details of a specific course."""
+        course = get_object_or_404(Course, pk=pk)
+        tests = course.tests.all()
+        serializer = SerializeTest(tests, many=True)
+        return Response(serializer.data)
+    def post(self,request,pk,format=None):
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        test_id = data.get("id")
+        test = get_object_or_404(Tests, pk=test_id)
+        course.tests.add(test)
+        course.save()
+        serializer = SerializeCourse(course)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+    def patch(self,request,pk,format=None):
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        test_id = data.get("id")
+        test = get_object_or_404(Tests, pk=test_id)
+        course.tests.remove(test)
+        course.save()
+        serializer = SerializeCourse(course)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+    def put(self, request, pk, format=None):
+        # Fetch the course by its ID
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        test_id = data.get("id")
+        # Fetch the test by its ID
+        test = get_object_or_404(Tests, pk=test_id)
+        
+        # Extract the updated data from the request
+        test.name = data.get('name', test.name)
+        test.description = data.get('description', test.description)
+        test.date_due = data.get('date_due', test.date_due)
+        test.max_points = data.get('max_points', test.max_points)
+        test.student_points = data.get('student_points', test.student_points)
+
+        # Handle file upload for the test
+        file = request.FILES.get('test_file')
+        if file:
+            fs = FileSystemStorage()
+            filename = fs.save(file.name, file)
+            file_url = fs.url(filename)
+            test.file = file_url  # Update the test file URL
+        
+        # Save the updated test
+        test.save()
+
+        # Ensure the updated test is linked to the course
+        if test not in course.tests.all():
+            course.tests.add(test)
+
+        course.save()
+
+        # Serialize the updated course with the modified tests
+        serializer = SerializeTest(test)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response({"detail": "You must be authenticated to submit an assignment."}, status=status.HTTP_401_UNAUTHORIZED)
+
+class CourseProfilesView(APIView):
+    def get_permissions(self):
+        """
+        Set different permissions for different HTTP methods.
+        """
+        if self.request.method == 'GET':
+            return [IsAuthenticated()]  # Allow authenticated users for PUT requests
+        return [IsAdminUser()]
+    def get(self, request, pk, format=None):
+        """Get the details of a specific course."""
+        course = get_object_or_404(Course, pk=pk)
+        profiles = course.profiles.all()
+        serializer = SerializeProfile(profiles, many=True)
+        return Response(serializer.data)
+    def post(self,request,pk,format=None):
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        profile_id = data.get("id")
+        profile = get_object_or_404(Profile, pk=profile_id)
+        course.profiles.add(profile)
+        course.save()
+        serializer = SerializeCourse(course)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+    def delete(self,request,pk,format=None):
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        profile_id = data.get("id")
+        profile = get_object_or_404(Profile, pk=profile_id)
+        course.profiles.remove(profile)
+        course.save()
+        serializer = SerializeCourse(course)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+class CourseThreadsView(APIView):
+    def get_permissions(self):
+        """
+        Set different permissions for different HTTP methods.
+        """
+        if self.request.method == 'PUT' or self.request.method == 'GET':
+            return [IsAuthenticated()]  # Allow authenticated users for PUT requests
+        return [IsAdminUser()]
+    def get(self, request, pk, format=None):
+        course = get_object_or_404(Course, pk=pk)
+        threads = course.threads.all()
+        serializer = SerializeThread(threads, many=True)
+        return Response(serializer.data)
+    def post(self,request,pk,format=None):
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        thread_id = data.get("id")
+        thread = get_object_or_404(Thread, pk=thread_id)
+        course.threads.add(thread)
+        course.save()
+        serializer = SerializeCourse(course)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+    def patch(self,request,pk,format=None):
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        thread_id = data.get("id")
+        thread = get_object_or_404(Thread, pk=thread_id)
+        course.threads.remove(thread)
+        course.save()
+        serializer = SerializeCourse(course)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+    def put(self,request,pk,format=None):
+        course = get_object_or_404(Course, pk=pk)
+        data = request.data
+        thread_id = data.get("id")
+        thread = get_object_or_404(thread, pk=thread_id)
+        thread.title = data.get("title", thread.title)
+        thread.save()
+        serializer = SerializeThread(course)
+        return Response(serializer.data, status=status.HTTP_200_OK)

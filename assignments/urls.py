@@ -8,6 +8,7 @@ urlpatterns = [
     path('detail/<str:pk>/',views.AssignmentDetail.as_view(), name="detail"),
     path('update/<str:pk>/', views.AssignmentUpdate.as_view(), name="update"),
     path('delete/<str:pk>/', views.AssignmentDelete.as_view(), name="delete"),
+    path('submit/<str:pk>/', views.AssignmentSubmitView.as_view(), name="submit"),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)

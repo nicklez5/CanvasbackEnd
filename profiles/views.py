@@ -7,45 +7,41 @@ from rest_framework.generics import RetrieveAPIView,ListAPIView,UpdateAPIView
 from .serializers import SerializeProfile
 from .models import Profile
 
-class ProfileListView(ListAPIView):
-    queryset = Profile.objects.all()
+class ProfileListView(APIView):
     serializer_class = SerializeProfile
     permission_classes = [IsAuthenticated]
-
+    def get(self,request):
+        queryset = Profile.objects.all()
+        serializer = SerializeProfile(queryset, many=True)
+        return Response(serializer.data)
     
-class ProfileView(RetrieveAPIView):
-    queryset = Profile.objects.all()
-    serializer_class = SerializeProfile
+class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
-    def get_object(self):
-        """
-        Override to retrieve the profile of the currently authenticated user.
-        """
-        return self.request.user.profile
 
-class ProfileUpdateView(UpdateAPIView):
-    queryset = Profile.objects.all()
-    serializer_class = SerializeProfile
-    permission_classes = [IsAuthenticated]
-    def update(self, request, *args, **kwargs):
-        # Get the Profile instance
-        profile = self.get_object()
+    def get(self, request, *args, **kwargs):
+        # Retrieve the profile of the authenticated user
+        profile = request.user.profile  # Access the profile via the reverse relationship (user.profile)
         
-        # Get the associated User object
+        # Serialize the profile data
+        serializer = SerializeProfile(profile)
         
+        # Return the serialized data as a response
+        return Response(serializer.data)
 
-        # Check if email is provided in the request and update the email in the User model
+    def put(self, request, *args, **kwargs):
+        # Retrieve the profile of the authenticated user
+        profile = request.user.profile
         
+        # Serialize the updated data
+        serializer = SerializeProfile(profile, data=request.data, partial=True)  # partial=True for partial updates
+        
+        if serializer.is_valid():
+            serializer.save()  # Save the updated profile data
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        # Continue to update other fields for the profile
-        profile.first_name = request.data.get('first_name', profile.first_name)
-        profile.last_name = request.data.get('last_name', profile.last_name)
-        profile.date_of_birth = request.data.get('date_of_birth', profile.date_of_birth)
-        profile.save()
 
-        # Return the updated profile data
-        serializer = self.get_serializer(profile)
-        return Response(serializer.data, status=status.HTTP_200_OK)
     
         
 

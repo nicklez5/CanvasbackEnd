@@ -11,50 +11,58 @@ from rest_framework import serializers, status
 from threads.serializers import SerializeThread
 from .serializers import SerializeMessage
 from rest_framework.generics import UpdateAPIView,RetrieveAPIView,DestroyAPIView, CreateAPIView, ListAPIView
+from rest_framework.exceptions import PermissionDenied
 class MessageList(ListAPIView):
     queryset = Message.objects.all()
     serializer_class = SerializeMessage
     permission_classes = [IsAuthenticated]
 
+class MessagePost(APIView):
+    permission_classes = [IsAuthenticated]
+    def post(self, request, format=None):
+        # Copy the incoming data to prevent modifying the original request.data
+        data = request.data.copy()
 
-class MessageCreateView(CreateAPIView):
-    queryset = Message.objects.all()
-    serializer_class = SerializeMessage
-    permission_classes = [IsAuthenticatedOrReadOnly]
+        # Set the 'author' field to the authenticated user (User instance, not just user.id)
+        data['author'] = request.user  # Set the actual User object, not just the ID
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        message = serializer.save()
+        # Serialize the data
+        serializer = SerializeMessage(data=data)
 
-        # Fetch the updated thread, without querying again if already loaded
-        thread = message.thread
-
-        # Optionally handle thread not found, although it should exist due to ForeignKey constraint
-        if not thread:
-            return Response({"detail": "Thread not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        # Serialize the updated thread data
-        thread_data = SerializeThread(thread).data
-        return Response(thread_data, status=status.HTTP_201_CREATED)
-
+        # Validate and save the message
+        if serializer.is_valid():
+            serializer.save()  # This will automatically associate the 'author' with the authenticated user
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 class MessageDetailView(RetrieveAPIView):
     queryset = Message.objects.all()
     serializer_class = SerializeMessage
     permission_classes = [IsAuthenticated]
-    lookup_field = 'pk'
 
 class MessageUpdateView(UpdateAPIView):
     queryset = Message.objects.all()
     serializer_class = SerializeMessage
     permission_classes = [IsAuthenticated]
-    lookup_field = 'pk'
-
+    def get_object(self):
+        # Retrieve the message based on the primary key (pk)
+        message = super().get_object()
+        # Ensure that only the author of the message can update it
+        if message.author != self.request.user:
+            raise PermissionDenied("You do not have permission to edit this message.")
+        return message
+    
 class MessageDeleteView(DestroyAPIView):
     queryset = Message.objects.all()
     serializer_class = SerializeMessage
     permission_classes = [IsAuthenticated]
-    lookup_field = 'pk'
+    def get_object(self):
+        # Retrieve the message based on pk
+        message = super().get_object()
+        # Ensure that only the author of the message can delete it
+        if message.author != self.request.user:
+            raise PermissionDenied("You do not have permission to delete this message.")
+        return message
 
 
     

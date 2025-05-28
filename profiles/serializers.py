@@ -6,5 +6,5 @@ class SerializeProfile(serializers.ModelSerializer):
     class Meta:
         model = Profile 
         fields = ['pk','email','first_name','last_name','date_of_birth']
-
+    
     

@@ -6,7 +6,7 @@ class Profile(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='profile'  # this makes user.profile work
+        related_name="profile" # this makes user.profile work
     )
     
     first_name = models.CharField(max_length=200,null=True,blank=True)
@@ -16,6 +16,7 @@ class Profile(models.Model):
 
     def __str__(self):
         return str(self.user)
-
+    class Meta:
+        db_table = 'profile'
 
 #post_save.connect(update_profile, sender=settings.AUTH_USER_MODEL)

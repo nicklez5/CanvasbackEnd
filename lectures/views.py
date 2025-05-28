@@ -10,7 +10,7 @@ from rest_framework.parsers import FileUploadParser, MultiPartParser, JSONParser
 from rest_framework import serializers, status 
 from .serializers import SerializeLecture 
 from rest_framework.generics import UpdateAPIView,RetrieveAPIView,DestroyAPIView, CreateAPIView, ListAPIView
-
+from django.forms import ValidationError
 logger = logging.getLogger(__name__)  
 class LectureList(ListAPIView):
     queryset = Lecture.objects.all()
@@ -26,7 +26,7 @@ class LecturePost(CreateAPIView):
 class LectureDetail(RetrieveAPIView):
     queryset = Lecture.objects.all()
     serializer_class = SerializeLecture
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
     lookup_field = 'pk'
 class LectureUpdate(UpdateAPIView):
     queryset = Lecture.objects.all()
@@ -41,22 +41,16 @@ class LectureDelete(DestroyAPIView):
     permission_classes = [IsAdminUser]
     lookup_field = 'pk'
 
-    def delete(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if instance.file and instance.file.name:
-            try:
-                instance.file.delete(save=False)
-                file_deleted = True
-            except Exception as e:
-                logger.error(f"Failed to delete file {instance.file.name}: {e}")
-                file_deleted = False
-                # Log error or handle it gracefully
-        else:
-            file_deleted = False
-        self.perform_destroy(instance)
-        if file_deleted:
-            return Response({"detail": "Lecture and file deleted successfully."}, status=status.HTTP_200_OK)
-        else:
-            return Response({"detail": "Lecture deleted, but file deletion failed."}, status=status.HTTP_200_OK)
+    def perform_destroy(self, instance):
+        # Try to delete the associated file first, then delete the instance.
+        try:
+            if instance.file:
+                instance.file.delete(save=False)  # Remove file from storage
+            instance.delete()  # Delete the instance itself
+        except Exception as e:
+            # Log the error for debugging purposes
+            logger.error(f"Error deleting lecture with id {instance.pk}: {str(e)}")
+            # Raise a ValidationError or a NotFound error with a custom message
+            raise ValidationError(f"Error deleting files or instance: {str(e)}")
 
 # Create your views here.

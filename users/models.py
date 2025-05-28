@@ -14,7 +14,6 @@ from datetime import datetime, timedelta
 class CustomUser(AbstractBaseUser, PermissionsMixin):
     username = models.CharField(db_index=True,max_length=255,unique=True,default='')
     email = models.EmailField(_('email address'), unique=True)
-
     date_joined = models.DateField(verbose_name='date joined', auto_now_add=True)
     last_login = models.DateField(verbose_name='last login', auto_now=True)
 
@@ -38,7 +37,13 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     def has_module_perms(self, app_label):
         return True 
     
+    @property
+    def profile(self):
+        return Profile.objects.get_or_create(user=self)[0]
     
+    @property
+    def canvas(self):
+        return Canvas.objects.get_or_create(user=self)[0]
 
 
     
