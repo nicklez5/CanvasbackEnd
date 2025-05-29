@@ -14,7 +14,9 @@ def create_auth_token(sender,instance=None,created=False, **kwargs):
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
         Profile.objects.get_or_create(user=instance)
-
+    else:
+        # Update the profile if necessary (not always needed)
+        instance.profile.save()
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_Canvas(sender, instance, created, **kwargs):
     if created:

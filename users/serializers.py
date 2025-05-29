@@ -3,7 +3,7 @@ from django.contrib.auth.models import update_last_login
 from django.contrib.auth.password_validation import validate_password
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers, generics 
-from .models import CustomUser
+from .models import CustomUser, Profile, Canvas
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -24,10 +24,25 @@ class UserChangePasswordSerializer(serializers.Serializer):
 class RegisterSerializer(serializers.ModelSerializer):
     password2 = serializers.CharField(style={'input_type': 'password'}, write_only=True)
     class Meta:
-        model = CustomUser
+        model = get_user_model()
         fields = ['username','email','password', 'password2']
         extra_kwargs = {'password': {'write_only': True}}
+    def validate(self, attrs):
+        """Ensure both passwords match."""
+        password = attrs.get('password')
+        password2 = attrs.get('password2')
 
+        if password != password2:
+            raise serializers.ValidationError({"password": "Passwords must match."})
+        
+        return attrs
+    def create(self, validated_data):
+        """Create a user and return it."""
+        password = validated_data.pop('password')  # Pop password field
+        user = get_user_model().objects.create_user(**validated_data)  # Create user with hashed password
+        user.set_password(password)  # Hash the password
+        user.save()  # Save the user to the database
+        return user
     def save(self):
         user = CustomUser(
             email = self.validated_data['email'],
@@ -69,6 +84,20 @@ class UserLoginSerializer(serializers.Serializer):
         data["user"] = user
         return data
     
+
+class ProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Profile
+        fields = ['first_name', 'last_name', 'date_of_birth']
+
+class CanvasSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Canvas
+        fields = ['list_courses']  # You can include other fields as needed
+
+class UserProfileCanvasSerializer(serializers.Serializer):
+    profile = ProfileSerializer()
+    canvas = CanvasSerializer()
 
 
         

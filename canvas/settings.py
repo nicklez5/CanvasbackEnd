@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.sites',
     'users.apps.UsersConfig',
+    'mycanvas.apps.MycanvasConfig',
     'course',
     'lectures',
     'rest_framework',
@@ -47,7 +48,6 @@ INSTALLED_APPS = [
     'message',
     'threads',
     'assignments',
-    'mycanvas',
     'corsheaders',
     'tests'
 ]

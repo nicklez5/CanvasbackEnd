@@ -123,7 +123,7 @@ class CourseLecturesView(APIView):
         course.save()
         serializer = SerializeCourse(course)
         return Response(serializer.data,status=status.HTTP_200_OK)
-    def delete(self,request,pk,format=None):
+    def patch(self,request,pk,format=None):
         course = get_object_or_404(Course, pk=pk)
         data = request.data
         lecture_id = data.get("id")
@@ -313,38 +313,6 @@ class CourseTestsView(APIView):
 
         return Response({"detail": "You must be authenticated to submit an assignment."}, status=status.HTTP_401_UNAUTHORIZED)
 
-class CourseProfilesView(APIView):
-    def get_permissions(self):
-        """
-        Set different permissions for different HTTP methods.
-        """
-        if self.request.method == 'GET':
-            return [IsAuthenticated()]  # Allow authenticated users for PUT requests
-        return [IsAdminUser()]
-    def get(self, request, pk, format=None):
-        """Get the details of a specific course."""
-        course = get_object_or_404(Course, pk=pk)
-        profiles = course.profiles.all()
-        serializer = SerializeProfile(profiles, many=True)
-        return Response(serializer.data)
-    def post(self,request,pk,format=None):
-        course = get_object_or_404(Course, pk=pk)
-        data = request.data
-        profile_id = data.get("id")
-        profile = get_object_or_404(Profile, pk=profile_id)
-        course.profiles.add(profile)
-        course.save()
-        serializer = SerializeCourse(course)
-        return Response(serializer.data,status=status.HTTP_200_OK)
-    def delete(self,request,pk,format=None):
-        course = get_object_or_404(Course, pk=pk)
-        data = request.data
-        profile_id = data.get("id")
-        profile = get_object_or_404(Profile, pk=profile_id)
-        course.profiles.remove(profile)
-        course.save()
-        serializer = SerializeCourse(course)
-        return Response(serializer.data,status=status.HTTP_200_OK)
 class CourseThreadsView(APIView):
     def get_permissions(self):
         """

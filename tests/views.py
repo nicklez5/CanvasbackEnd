@@ -40,7 +40,14 @@ class TestUpdateView(UpdateAPIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
     lookup_field = 'pk'
-
+    def perform_update(self, serializer):
+        # Check if a file is provided in the request
+        if self.request.FILES.get('file'):
+            file = self.request.FILES['file']
+            # Update the serializer with the new file
+            serializer.validated_data['file'] = file
+        # Save the updated object
+        serializer.save()
 class TestDeleteView(DestroyAPIView):
     queryset = Tests.objects.all()
     serializer_class = SerializeTest
@@ -70,7 +77,7 @@ class TestSubmitView(APIView):
 
         # Extract data from the request
         file = request.FILES.get("student_file")  # The file that the student submits
-        student_points = request.data.get("student_points", None)  # Optional: If the student is submitting a score
+        student_points = request.data.get("student_points", 0)  # Optional: If the student is submitting a score
 
         # Handle file upload if provided
         if file:
@@ -80,7 +87,7 @@ class TestSubmitView(APIView):
             test.student_file = file_url  # Save the student file URL
 
         # Optionally: Save the student's score if submitted
-        if student_points is not None:
+        if student_points != 0:
             test.student_points = student_points  # Update the student's score
 
         # Update the submitter field to mark the test as submitted

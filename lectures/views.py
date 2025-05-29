@@ -34,7 +34,24 @@ class LectureUpdate(UpdateAPIView):
     permission_classes = [IsAdminUser]
     parser_classes = [MultiPartParser, FormParser]
     lookup_field = 'pk'
-  
+    def update(self, request, *args, **kwargs):
+        """Override the update method to handle custom logic, including file uploads"""
+        lecture = self.get_object()  # Retrieve the lecture object based on pk
+
+        # Check if the data is valid and perform the update
+        serializer = self.get_serializer(lecture, data=request.data, partial=True)  # partial=True allows partial updates
+
+        if serializer.is_valid():
+            # Save the updated lecture data
+            serializer.save()
+
+            # Custom logic if needed (e.g., logging or notifications)
+            # For example, sending a notification or logging the update.
+
+            # Return the serialized updated lecture data
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 class LectureDelete(DestroyAPIView):
     queryset = Lecture.objects.all()
     serializer_class = SerializeLecture

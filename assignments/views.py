@@ -65,7 +65,7 @@ class AssignmentSubmitView(APIView):
 
         # Extract data from the request
         file = request.FILES.get("student_file")  # The file that the student submits
-        student_points = request.data.get("student_points", None)  # Optional: If the student is submitting a score
+        student_points = request.data.get("student_points", 0)  # Optional: If the student is submitting a score
 
         # Handle file upload if provided
         if file:
@@ -75,7 +75,7 @@ class AssignmentSubmitView(APIView):
             assignment.student_file = file_url  # Save the student file URL
 
         # Optionally: Save the student's score if submitted
-        if student_points is not None:
+        if student_points != 0:
             assignment.student_points = student_points  # Update the student's score
 
         # Update the submitter field to mark the assignment as submitted

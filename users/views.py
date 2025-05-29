@@ -11,10 +11,10 @@ from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from rest_framework.parsers import FileUploadParser, MultiPartParser, JSONParser
 from .models import CustomUser 
-from .serializers import UserChangePasswordSerializer, UserSerializer, UserLoginSerializer, RegisterSerializer
+from .serializers import ProfileSerializer,UserProfileCanvasSerializer,UserChangePasswordSerializer, UserSerializer, UserLoginSerializer, RegisterSerializer
 from rest_framework.authtoken.views import ObtainAuthToken
-
-
+from django.contrib.auth import authenticate, get_user_model
+from rest_framework.exceptions import ValidationError
 class UserList(APIView):
     serializer_class = UserSerializer
     permission_classes = [AllowAny]
@@ -47,16 +47,35 @@ class RegisterView(APIView):
     def post(self,request,format=None):
         reg_serializer = RegisterSerializer(data=request.data)
         data = {}
+
         if reg_serializer.is_valid():
-            CustomUser = reg_serializer.save()
-            data['response'] = "successfully registered a new user."
-            data['email'] = CustomUser.email
-            data['username'] = CustomUser.username
-            (token,created) = Token.objects.get_or_create(user=CustomUser)
+            # Check if the username or email already exists
+            username = reg_serializer.validated_data['username']
+            email = reg_serializer.validated_data['email']
+            user_model = get_user_model()
+
+            if user_model.objects.filter(username=username).exists():
+                raise ValidationError({"username": "Username already exists."})
+            if user_model.objects.filter(email=email).exists():
+                raise ValidationError({"email": "Email is already registered."})
+
+            # Save the new user
+            user = reg_serializer.save()
+
+            # Create a token for the user
+            token, created = Token.objects.get_or_create(user=user)
+            
+            # Send success response with the token and user data
+            data['response'] = "Successfully registered a new user."
+            data['email'] = user.email
+            data['username'] = user.username
             data['token'] = token.key
+            return Response(data, status=201)
+        
         else:
+            # If serializer is not valid, return errors
             data = reg_serializer.errors
-        return Response(data)
+            return Response(data, status=400)
     
 class UserView(APIView):
 
@@ -107,10 +126,27 @@ class UpdatePassword(APIView):
                                 status=status.HTTP_400_BAD_REQUEST)
             custom_user.set_password(serializer.data.get("new_password"))
             custom_user.save()
-            return Response(status=status.HTTP_204_NO_CONTENT)
+            return Response({"detail": "Password changed successfully."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    
+class UserCanvasProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user  # Get the logged-in user
+        
+        # Access the user profile and canvas
+        profile = user.profile
+        canvas = user.canvas
+        
+        # Serialize the profile and canvas data
+        data = UserProfileCanvasSerializer({
+            "profile": profile,
+            "canvas": canvas
+        }).data
+        
+        return Response(data)
+
 # Create your views here.
 # class CustomAuthToken(ObtainAuthToken):
 #     serializer_class = UserLoginSerializer

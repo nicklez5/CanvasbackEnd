@@ -5,7 +5,7 @@ def select_storage():
     return storages["mystorage"]
 class Lecture(models.Model):
     description = models.TextField(blank=True)
-    name = models.CharField(max_length=100,unique=True)
+    name = models.CharField(max_length=100,unique=True,blank=True)
     file = models.FileField(storage=select_storage,upload_to="lectures/",null=True)
     
 

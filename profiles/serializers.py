@@ -5,6 +5,6 @@ class SerializeProfile(serializers.ModelSerializer):
     email = serializers.CharField(read_only=True,source='user.email')
     class Meta:
         model = Profile 
-        fields = ['pk','email','first_name','last_name','date_of_birth']
+        fields = ['id','email','first_name','last_name','date_of_birth']
     
     

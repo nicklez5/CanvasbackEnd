@@ -6,4 +6,4 @@ class SerializeThread(serializers.ModelSerializer):
     list_of_messages = SerializeMessage(many=True, read_only=True) 
     class Meta:
         model = Thread
-        fields =  ['pk','title','list_of_messages', 'created_at']
+        fields =  ['id','title','list_of_messages', 'created_at']

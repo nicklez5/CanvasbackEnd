@@ -35,7 +35,7 @@ class CanvasCourse(APIView):
         """Helper method to retrieve the Canvas object or raise a 404 error"""
         return get_object_or_404(Canvas, pk=pk)
 
-    def delete(self, request, pk, format=None):
+    def put(self, request, pk, format=None):
         """Remove a course from the Canvas' list_courses (ManyToManyField)"""
         data = request.data
         canvas = self.get_object(pk)
