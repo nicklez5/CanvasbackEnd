@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.generics import RetrieveAPIView,ListAPIView,UpdateAPIView
 from .serializers import SerializeProfile
 from .models import Profile
-
+from course.models import Course
 class ProfileListView(APIView):
     serializer_class = SerializeProfile
     permission_classes = [IsAuthenticated]
@@ -36,7 +36,11 @@ class ProfileView(APIView):
         serializer = SerializeProfile(profile, data=request.data, partial=True)  # partial=True for partial updates
         
         if serializer.is_valid():
-            serializer.save()  # Save the updated profile data
+            new_profile = serializer.save()
+            courses = Course.objects.filter(profiles__id=request.user.id)
+            for course in courses:
+                course.profiles.filter(id=request.user.id).update(first_name=new_profile.first_name, last_name=new_profile.last_name, date_of_birth=new_profile.date_of_birth)
+              # Save the updated profile data
             return Response(serializer.data, status=status.HTTP_200_OK)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

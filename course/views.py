@@ -54,8 +54,8 @@ class CourseDetailView(APIView):
     def get(self,request,pk,format=None):
 
         """Get details of a specific course"""
-        course = get_object_or_404(Course, pk=pk)
         if request.method == "GET":
+            course = Course.objects.get(id=pk)
             serializer = SerializeCourse(course)
             return Response(serializer.data)
 
@@ -353,3 +353,18 @@ class CourseThreadsView(APIView):
         thread.save()
         serializer = SerializeThread(course)
         return Response(serializer.data, status=status.HTTP_200_OK)
+class CourseStudentsView(APIView):
+    permission_classes = [IsAdminUser]
+    def post(self,request,course_id,student_id):
+        try:
+            course = Course.objects.get(id=course_id)
+            student = CustomUser.objects.get(id=student_id)
+            course.profiles.remove(student.profile)
+            student.canvas.list_courses.remove(course)
+            course.save()
+            return Response({"message": "Student removed from course and canvas updated."}, status=status.HTTP_200_OK)
+        except Course.DoesNotExist:
+            return Response({"error": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
+        except CustomUser.DoesNotExist:
+            return Response({"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
+    
