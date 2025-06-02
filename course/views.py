@@ -2,10 +2,15 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, AllowAny, IsAuthenticated
 from rest_framework.views import APIView
+from rest_framework.generics import ListAPIView
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework import status
+from assignments.serializers import AssignmentSubmissionSerializer
+from assignments.models import AssignmentSubmission
+from tests.serializers import TestSubmissionSerializer
+from tests.models import TestSubmission
 from .models import Course
-from .serializers import SerializeCourse, SerializeLecture, SerializeAssignment, SerializeProfile,SerializeTest,SerializeThread
+from .serializers import SerializeCourse, SerializeLecture, AssignmentSerializer, SerializeProfile,TestSerializer,SerializeThread
 from django.shortcuts import get_object_or_404
 from lectures.models import Lecture 
 from assignments.models import Assignment
@@ -154,13 +159,12 @@ class CourseLecturesView(APIView):
         
         # Handle file upload if provided
         if file:
-            fs = FileSystemStorage()
-            filename = fs.save(file.name, file)
-            lecture.file = fs.url(filename)  # Update file URL in the lecture model
-        
+            lecture.file = file  # Update file URL in the lecture model
+            lecture.save()
         # Save the updated lecture
-        lecture.save()
-
+        if lecture not in course.lectures.all():
+            course.lectures.add(lecture)
+        course.save()
         # Return the updated course with the modified lecture
         serializer = SerializeCourse(course)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -179,7 +183,7 @@ class CourseAssignmentsView(APIView):
         """Get the details of a specific course."""
         course = get_object_or_404(Course, pk=pk)
         assignments = course.assignments.all()
-        serializer = SerializeAssignment(assignments, many=True)
+        serializer = AssignmentSerializer(assignments, many=True)
         return Response(serializer.data)
     def post(self,request,pk,format=None):
         course = get_object_or_404(Course, pk=pk)
@@ -214,22 +218,16 @@ class CourseAssignmentsView(APIView):
         assignment = get_object_or_404(Assignment, pk=assignment_id)
 
         # If the assignment is to be updated, modify its fields here
-        assignment.name = data.get("name", assignment.name)
-        assignment.description = data.get("description", assignment.description)
-        assignment.date_due = data.get("date_due", assignment.date_due)
-        assignment.max_points = data.get("max_points", assignment.max_points)
-        assignment.student_points = data.get("student_points", assignment.student_points)
-        
+        serializer = AssignmentSerializer(assignment,data = request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         # Optionally update the file if it has been provided
-        file = request.FILES.get("assignment_file")
-        if file:
-            fs = FileSystemStorage()
-            filename = fs.save(file.name, file)
-            file_url = fs.url(filename)
-            assignment.assignment_file = file_url  # Update assignment file URL
+        new_file = request.FILES.get("assignment_file")
+        if new_file:
+            assignment.assignment_file = new_file
+            assignment.save() # Update assignment file URL
 
         # Save the updated assignment
-        assignment.save()
 
         # If you want to add or remove assignments from the course, 
         # you can modify the `assignments` field of the course here.
@@ -240,7 +238,7 @@ class CourseAssignmentsView(APIView):
         course.save()
 
         # Serialize the updated course data and return the response
-        serializer = SerializeAssignment(assignment)
+        serializer = AssignmentSerializer(assignment)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class CourseTestsView(APIView):
@@ -248,14 +246,14 @@ class CourseTestsView(APIView):
         """
         Set different permissions for different HTTP methods.
         """
-        if self.request.method == 'PUT' or self.request.method == 'GET':
+        if self.request.method == 'GET':
             return [IsAuthenticated()]  # Allow authenticated users for PUT requests
         return [IsAdminUser()]
     def get(self, request, pk, format=None):
         """Get the details of a specific course."""
         course = get_object_or_404(Course, pk=pk)
         tests = course.tests.all()
-        serializer = SerializeTest(tests, many=True)
+        serializer = TestSerializer(tests, many=True)
         return Response(serializer.data)
     def post(self,request,pk,format=None):
         course = get_object_or_404(Course, pk=pk)
@@ -284,22 +282,16 @@ class CourseTestsView(APIView):
         test = get_object_or_404(Tests, pk=test_id)
         
         # Extract the updated data from the request
-        test.name = data.get('name', test.name)
-        test.description = data.get('description', test.description)
-        test.date_due = data.get('date_due', test.date_due)
-        test.max_points = data.get('max_points', test.max_points)
-        test.student_points = data.get('student_points', test.student_points)
-
+        serializer = TestSerializer(test, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         # Handle file upload for the test
-        file = request.FILES.get('test_file')
-        if file:
-            fs = FileSystemStorage()
-            filename = fs.save(file.name, file)
-            file_url = fs.url(filename)
-            test.file = file_url  # Update the test file URL
+        new_file = request.FILES.get('test_file')
+        if new_file:
+            test.test_file = new_file
+            test.save() # Update the test file URL
         
         # Save the updated test
-        test.save()
 
         # Ensure the updated test is linked to the course
         if test not in course.tests.all():
@@ -308,17 +300,17 @@ class CourseTestsView(APIView):
         course.save()
 
         # Serialize the updated course with the modified tests
-        serializer = SerializeTest(test)
+        serializer = TestSerializer(test)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-        return Response({"detail": "You must be authenticated to submit an assignment."}, status=status.HTTP_401_UNAUTHORIZED)
+        
 
 class CourseThreadsView(APIView):
     def get_permissions(self):
         """
         Set different permissions for different HTTP methods.
         """
-        if self.request.method == 'PUT' or self.request.method == 'GET':
+        if self.request.method == 'PUT' or self.request.method == 'GET' or self.request.method == 'POST':
             return [IsAuthenticated()]  # Allow authenticated users for PUT requests
         return [IsAdminUser()]
     def get(self, request, pk, format=None):
@@ -367,4 +359,47 @@ class CourseStudentsView(APIView):
             return Response({"error": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
         except CustomUser.DoesNotExist:
             return Response({"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
-    
+class StudentTestGradesView(ListAPIView):
+    """
+    GET /api/courses/{course_id}/tests/grades/{student_id}/
+    """
+    serializer_class   = TestSubmissionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        course_id  = self.kwargs["course_id"]
+        student_id = self.kwargs["student_id"]
+        course = get_object_or_404(Course, pk=course_id)
+        return TestSubmission.objects.filter(
+            test__in=course.tests.all(),
+            student_id=student_id,
+        )
+class StudentAssignmentGradesView(ListAPIView):
+    """
+    GET /api/courses/{course_id}/assignments/grades/{student_id}/
+    """
+    serializer_class   = AssignmentSubmissionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        course_id  = self.kwargs["course_id"]
+        student_id = self.kwargs["student_id"]
+        course = get_object_or_404(Course, pk=course_id)
+        return AssignmentSubmission.objects.filter(
+            assignment__in=course.assignments.all(),
+            student_id=student_id,
+    )
+class StudentAllGradesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, course_id, student_id):
+        assignments = AssignmentSubmission.objects.filter(
+            assignment__course_id=course_id, student_id=student_id
+        )
+        tests = TestSubmission.objects.filter(
+            test__course_id=course_id, student_id=student_id
+        )
+        return Response({
+            "assignments": AssignmentSubmissionSerializer(assignments, many=True).data,
+            "tests": TestSubmissionSerializer(tests, many=True).data,
+    })

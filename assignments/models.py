@@ -7,16 +7,39 @@ def select_storage():
     return storages["mystorage"]
 class Assignment(models.Model):
     name = models.CharField(max_length=100,unique=False)
-    submitter = models.CharField(max_length=100,unique=False,null=True,blank=True)
     date_due = models.DateTimeField(null=True,blank=True)
     max_points = models.IntegerField(null=True,blank=True)
-    student_points = models.IntegerField(default=0,null=True,blank=True)
     description = models.TextField(max_length=100,blank=True)
     assignment_file = models.FileField(storage=select_storage,upload_to="assignments/",null=True,blank=True)
-    student_file = models.FileField(storage=select_storage,upload_to="assignments/", null=True, blank=True)
     def __str__(self):
         return self.name 
 
+
+class AssignmentSubmission(models.Model):
+    assignment     = models.ForeignKey(
+        Assignment, on_delete=models.CASCADE, related_name="submissions"
+    )
+    student        = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="assignment_submissions"
+    )
+    submitted_at   = models.DateTimeField(auto_now_add=True)
+    student_file   = models.FileField(storage=select_storage,
+        upload_to="assignments/submissions/", null=True, blank=True
+    )
+    student_points = models.IntegerField(null=True, blank=True)
+    graded_at      = models.DateTimeField(null=True, blank=True)
+    graded_by      = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="graded_assignment_submissions",
+    )
+    feedback       = models.TextField(blank=True)
+
     class Meta:
-        ordering = ['date_due']
-        db_table = "assignment"
+        unique_together = ("assignment", "student")
+        ordering = ["-submitted_at"]
+
+    def __str__(self):
+        return f"{self.student.username} → {self.assignment.name}"

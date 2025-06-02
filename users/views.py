@@ -11,7 +11,7 @@ from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from rest_framework.parsers import FileUploadParser, MultiPartParser, JSONParser
 from .models import CustomUser 
-from .serializers import ProfileSerializer,UserProfileCanvasSerializer,UserChangePasswordSerializer, UserSerializer, UserLoginSerializer, RegisterSerializer
+from .serializers import ProfileSerializer,UserProfileCanvasSerializer,UserChangePasswordSerializer, UserSerializer, UserLoginSerializer, RegisterSerializer,ChangePasswordSerializer
 from rest_framework.authtoken.views import ObtainAuthToken
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.tokens import default_token_generator
@@ -64,7 +64,7 @@ class ForgotPasswordAPIView(APIView):
 
         # Create the password reset URL
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-        reset_url = f"http://localhost:8000/reset-password/{uid}/{token}/"
+        reset_url = f"http://localhost:8000/users/reset-password/{uid}/{token}/"
 
         # Send password reset email
         subject = "Password Reset Request"
@@ -79,110 +79,108 @@ class ResetPasswordAPIView(APIView):
     permission_classes = [AllowAny]
 
     def put(self, request, uidb64, token):
+        # 1) Decode the user ID
         try:
-            uid = force_str(urlsafe_base64_decode(uidb64))
+            uid = urlsafe_base64_decode(uidb64).decode()
             user = CustomUser.objects.get(pk=uid)
         except (TypeError, ValueError, OverflowError, CustomUser.DoesNotExist):
-            return Response({"detail": "Invalid reset link."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Invalid link."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        # 2) Verify token
         if not default_token_generator.check_token(user, token):
-            return Response({"detail": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Token is invalid or expired."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        # 3) Extract the password field from request.data
         new_password = request.data.get("password")
         if not new_password:
-            return Response({"detail": "Password is required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Password is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        CustomUser.set_password(new_password)
-        CustomUser.save()
+        # 4) Now call set_password with the raw string
+        user.set_password(new_password)
+        user.save()
 
-        return Response({"detail": "Password has been reset successfully."}, status=status.HTTP_200_OK)
+        return Response(
+            {"detail": "Password has been reset."},
+            status=status.HTTP_200_OK
+        )
 class RegisterView(APIView):
     
     permission_classes = [AllowAny]
     def post(self,request,format=None):
         reg_serializer = RegisterSerializer(data=request.data)
-        data = {}
 
-        if reg_serializer.is_valid():
-            # Check if the username or email already exists
-            username = reg_serializer.validated_data['username']
-            email = reg_serializer.validated_data['email']
-            user_model = get_user_model()
+        if not reg_serializer.is_valid():
+            return Response(reg_serializer.errors, status=400)
 
-            if user_model.objects.filter(username=username).exists():
-                raise ValidationError({"username": "Username already exists."})
-            if user_model.objects.filter(email=email).exists():
-                raise ValidationError({"email": "Email is already registered."})
+        username = reg_serializer.validated_data['username']
+        email = reg_serializer.validated_data['email']
 
-            # Save the new user
-            user = reg_serializer.save()
+        # Prevent duplicate username/email
+        if CustomUser.objects.filter(username=username).exists():
+            raise ValidationError({"username": "Username already exists."})
+        if CustomUser.objects.filter(email=email).exists():
+            raise ValidationError({"email": "Email is already registered."})
 
-            # Create a token for the user
-            token, created = Token.objects.get_or_create(user=user)
-            
-            # Send success response with the token and user data
-            data['response'] = "Successfully registered a new user."
-            data['email'] = user.email
-            data['username'] = user.username
-            data['token'] = token.key
-            return Response(data, status=201)
-        
-        else:
-            # If serializer is not valid, return errors
-            data = reg_serializer.errors
-            return Response(data, status=400)
+        # This calls RegisterSerializer.create() under the hood
+        user = reg_serializer.save()
+
+        # Create a token for the new user
+        token, _ = Token.objects.get_or_create(user=user)
+
+        data = {
+            "response": "Successfully registered a new user.",
+            "user_id": user.pk,
+            "username": user.username,
+            "email": user.email,
+            "staff": user.is_staff,  # True if they picked "Staff"
+            "token": token.key,
+        }
+        return Response(data, status=201)
     
 class UserView(APIView):
 
     permission_classes = [IsAuthenticated]
-    serializer_class = UserSerializer
 
-    def get_object(self,pk):
-        try: 
-            return CustomUser.objects.get(pk=pk)
-        except CustomUser.DoesNotExist:
-            raise status.HTTP_404_NOT_FOUND
-
-    def get(self,request,pk,format=None):
-        custom_user = self.get_object(pk)
-        serializer = UserSerializer(custom_user)
+    def get(self, request, format=None):
+        serializer = UserSerializer(request.user, context={"request": request})
         return Response(serializer.data)
-    
-    def delete(self,request,pk,format=None):
-        custom_user = self.get_object(pk)
-        custom_user.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
-    def put(self,request,pk,format=None):
-        custom_user = self.get_object(pk)
-        serializer = UserSerializer(custom_user, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def patch(self, request, format=None):
+        serializer = UserSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
-class UpdatePassword(APIView):
+    # You could also allow full PUT if desired:
+    def put(self, request, format=None):
+        return self.patch(request, format=format)
+class ChangePasswordView(APIView):
+    """
+    POST /api/user/change-password/
+    Body: { current_password, new_password, confirm_new_password }
+    """
     permission_classes = [IsAuthenticated]
 
-    def get_object(self,pk):
-        try:
-            return CustomUser.objects.get(pk=pk)
-        except CustomUser.DoesNotExist:
-            raise status.HTTP_404_NOT_FOUND
+    def post(self, request, format=None):
+        serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Password changed successfully."}, status=status.HTTP_200_OK)
 
-    def put(self,request,pk,format=None):
-        custom_user = self.get_object(pk)
-        serializer = UserChangePasswordSerializer(data=request.data)
-
-        if serializer.is_valid():
-            old_password = serializer.data.get("old_password")
-            if not custom_user.check_password(old_password):
-                return Response({"old_password": ["Wrong password."]},
-                                status=status.HTTP_400_BAD_REQUEST)
-            custom_user.set_password(serializer.data.get("new_password"))
-            custom_user.save()
-            return Response({"detail": "Password changed successfully."}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class UserCanvasProfileView(APIView):
     permission_classes = [IsAuthenticated]

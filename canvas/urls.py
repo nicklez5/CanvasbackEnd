@@ -20,9 +20,11 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import TemplateView
 from django.urls import path, include
+from .views import get_csrf_token
 from rest_framework import routers 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path("api/get-csrf-token/", get_csrf_token),
     path('users/', include('users.urls')),
     path('assignments/', include('assignments.urls')),
     path('lectures/', include('lectures.urls')),

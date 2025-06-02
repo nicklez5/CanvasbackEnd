@@ -17,6 +17,9 @@ class ProfileListView(APIView):
     
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
+    def get_object(self):
+        # Always return the Profile for the currently authenticated user
+        return self.request.user.profile
 
     def get(self, request, *args, **kwargs):
         # Retrieve the profile of the authenticated user

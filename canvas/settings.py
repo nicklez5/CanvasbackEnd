@@ -14,7 +14,7 @@ from pathlib import Path
 import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -84,8 +84,14 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'canvas.wsgi.application'
-
-CORS_ORIGIN_ALLOW_ALL = True
+CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+]
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+]
+CORS_ORIGIN_ALLOW_ALL = False
 
 CORS_ORIGIN_WHITELIST = (
     'http://localhost:3000',
@@ -117,8 +123,12 @@ CORS_ALLOW_HEADERS = (
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'mydb',
+        'USER': 'webuser',
+        'PASSWORD': 'secret',
+        'HOST': '127.0.0.1',
+        'PORT': '5432',
     }
 }
 STORAGES = {
@@ -149,7 +159,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
+CSRF_COOKIE_HTTPONLY = False
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
